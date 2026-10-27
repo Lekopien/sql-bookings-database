@@ -62,3 +62,7 @@ After editing SQL files run `python3 db.py sync-site` to refresh the playground 
 ## License
 
 MIT. `site/vendor/` contains sql.js, MIT licensed (see `SQLJS-LICENSE`).
+
+## Author
+
+Built by **David Lekopien** ([@Lekopien](https://github.com/Lekopien)) · [lekopien.com](https://lekopien.com)
