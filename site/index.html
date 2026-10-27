@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQL Bookings Database · Lekopien</title>
+  <meta name="description" content="A relational schema for appointment bookings with triggers, views, window functions and recursive CTEs. Run the SQL live in your browser.">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .play { display: grid; gap: 12px; }
+    .queries { display: flex; flex-wrap: wrap; gap: 8px; }
+    .queries button { font: 13px var(--mono); background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+    .queries button:hover { border-color: var(--accent); }
+    textarea { font: 13px/1.5 var(--mono); min-height: 190px; resize: vertical; }
+    .result { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    .err { color: var(--bad); font-family: var(--mono); font-size: 13px; white-space: pre-wrap; }
+    .hint { color: var(--muted); font-size: 13px; margin: 0; }
+  </style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="https://lekopien.com">lekopien<span>.</span>sql</a>
+  <nav><a href="#play">Playground</a><a href="#schema">Schema</a><a href="https://github.com/Lekopien/sql-bookings-database">GitHub</a></nav>
+</div></header>
+<main class="wrap">
+  <div class="hero">
+    <span class="tag">Databases · SQL</span>
+    <h1>A bookings database, live in your browser</h1>
+    <p class="lead">A normalised SQLite schema for a studio that sells services by appointment. Triggers block double-booking and overpayment, views compute balances, and the reports use window functions and recursive CTEs. The real database runs below via WebAssembly.</p>
+  </div>
+
+  <section id="play" class="play">
+    <h2>SQL playground</h2>
+    <div class="queries" id="presets"></div>
+    <textarea id="sql" spellcheck="false" aria-label="SQL query"></textarea>
+    <div class="btns" style="margin:0"><button class="btn" id="run">Run (Ctrl+Enter)</button><button class="btn ghost" id="reset">Reset database</button></div>
+    <p class="hint">Try breaking the rules: <code>INSERT INTO bookings (client_id, staff_id, service_id, starts_at, ends_at) VALUES (1, 2, 4, '2026-11-03 10:30', '2026-11-03 11:30');</code></p>
+    <div class="card result" id="out">Loading SQLite…</div>
+  </section>
+
+  <section id="schema">
+    <h2>Schema</h2>
+    <pre><code>clients ─┐
+         ├─< bookings >── staff
+services ┘      │
+                └─< payments
+
+view booking_balances   due, paid and owed per booking
+trigger no_overlap      a staff member can't be double-booked
+trigger no_overpay      payments can't exceed the balance</code></pre>
+    <div class="grid">
+      <div class="card"><h3>Integrity in the database</h3><p>CHECK constraints, foreign keys with cascades, unique case-insensitive emails and triggers, so bad data can't get in from any app.</p></div>
+      <div class="card"><h3>Versioned migrations</h3><p>Numbered SQL files applied once each, in a transaction, tracked in schema_migrations.</p></div>
+      <div class="card"><h3>Analytical SQL</h3><p>Running totals with SUM() OVER, LAG for month-over-month change, RANK, pivots and a recursive slot calendar.</p></div>
+      <div class="card"><h3>Indexed for the queries</h3><p>Composite (staff_id, starts_at) index; a test asserts the query planner uses it.</p></div>
+    </div>
+  </section>
+</main>
+<footer><div class="wrap">Built by <a href="https://lekopien.com">Lekopien</a>. SQLite in the browser via <a href="https://github.com/sql-js/sql.js">sql.js</a> (MIT).</div></footer>
+<script src="vendor/sql-wasm.js"></script>
+<script>
+  const out = document.getElementById("out");
+  const editor = document.getElementById("sql");
+  let SQL, db, files = {};
+
+  const text = async (p) => (await fetch(p)).text();
+
+  async function reset() {
+    db?.close();
+    db = new SQL.Database();
+    db.run("PRAGMA foreign_keys = ON");
+    for (const [path, sql] of Object.entries(files)) if (!path.includes("/queries/")) db.exec(sql);
+    out.textContent = "Database ready: 5 clients, 3 staff, 5 services, 13 bookings, 9 payments. Pick a query or write your own.";
+  }
+
+  function render(results) {
+    if (!results.length) { out.textContent = `OK. ${db.getRowsModified()} row(s) changed.`; return; }
+    out.replaceChildren(...results.map(({ columns, values }) => {
+      const t = document.createElement("table");
+      const head = t.createTHead().insertRow();
+      columns.forEach((c) => (head.appendChild(document.createElement("th")).textContent = c));
+      const body = t.createTBody();
+      values.forEach((row) => { const tr = body.insertRow(); row.forEach((v) => (tr.insertCell().textContent = v ?? "NULL")); });
+      return t;
+    }));
+  }
+
+  function run() {
+    try { render(db.exec(editor.value)); }
+    catch (e) { out.innerHTML = ""; const p = document.createElement("p"); p.className = "err"; p.textContent = e.message; out.append(p); }
+  }
+
+  (async () => {
+    SQL = await initSqlJs({ locateFile: (f) => `vendor/${f}` });
+    const manifest = (await text("sql/manifest.txt")).trim().split("\n");
+    for (const path of manifest) files[path] = await text(path);
+    const presets = document.getElementById("presets");
+    for (const path of manifest.filter((p) => p.includes("/queries/"))) {
+      const b = document.createElement("button");
+      b.textContent = path.split("/").pop().replace(/^\d+_|\.sql$/g, "").replaceAll("_", " ");
+      b.onclick = () => { editor.value = files[path]; run(); };
+      presets.append(b);
+    }
+    await reset();
+    editor.value = files[manifest.find((p) => p.includes("revenue"))];
+    run();
+  })().catch((e) => (out.textContent = "Could not load SQLite: " + e.message));
+
+  document.getElementById("run").onclick = run;
+  document.getElementById("reset").onclick = reset;
+  editor.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); run(); } });
+</script>
+</body>
+</html>

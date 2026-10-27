@@ -1,0 +1,10 @@
+sql/migrations/001_core_tables.sql
+sql/migrations/002_payments.sql
+sql/migrations/003_no_double_booking.sql
+sql/seed.sql
+sql/queries/01_revenue_by_month.sql
+sql/queries/02_top_clients.sql
+sql/queries/03_outstanding_balances.sql
+sql/queries/04_staff_utilisation.sql
+sql/queries/05_free_slots.sql
+sql/queries/06_no_show_rate.sql
